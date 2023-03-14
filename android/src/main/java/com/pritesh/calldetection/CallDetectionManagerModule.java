@@ -1,12 +1,18 @@
 package com.pritesh.calldetection;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.Application;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.telephony.PhoneStateListener;
+import android.telephony.TelephonyCallback;
 import android.telephony.TelephonyManager;
 import android.util.Log;
+
+import androidx.annotation.RequiresApi;
+import androidx.core.content.ContextCompat;
 
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
@@ -48,17 +54,45 @@ public class CallDetectionManagerModule
         telephonyManager = (TelephonyManager) this.reactContext.getSystemService(
                 Context.TELEPHONY_SERVICE);
         callDetectionPhoneStateListener = new CallDetectionPhoneStateListener(this);
-        telephonyManager.listen(callDetectionPhoneStateListener,
-                PhoneStateListener.LISTEN_CALL_STATE);
+        
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            if (reactContext.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
+                telephonyManager.registerTelephonyCallback(ContextCompat.getMainExecutor(reactContext), callStateListener);
+            }
+        } else {
+            telephonyManager.listen(callDetectionPhoneStateListener, PhoneStateListener.LISTEN_CALL_STATE);
+        }
+    }
+
+    private boolean callStateListenerRegistered = false;
+
+    private CallStateListener callStateListener = (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) ?
+        new CallStateListener() {
+            @Override
+                public void onCallStateChanged(int state) {
+                    // Handle call state change
+                    phoneCallStateUpdated(state, null);
+                }
+        }
+        : null;
+
+    @RequiresApi(api = android.os.Build.VERSION_CODES.S)
+    private static abstract class CallStateListener extends TelephonyCallback implements TelephonyCallback.CallStateListener {
+        @Override
+        abstract public void onCallStateChanged(int state);
 
     }
 
     @ReactMethod
     public void stopListener() {
-        telephonyManager.listen(callDetectionPhoneStateListener,
-                PhoneStateListener.LISTEN_NONE);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            telephonyManager.unregisterTelephonyCallback(callStateListener);
+        } else {
+            telephonyManager.listen(callDetectionPhoneStateListener,
+            PhoneStateListener.LISTEN_NONE);
+            callDetectionPhoneStateListener = null;
+        }
         telephonyManager = null;
-        callDetectionPhoneStateListener = null;
     }
 
     /**
